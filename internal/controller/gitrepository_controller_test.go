@@ -2545,6 +2545,41 @@ func TestGitRepositoryReconciler_verifySignature(t *testing.T) {
 			},
 		},
 		{
+			name: "SSH-signed tag but Secret only has .asc keys makes SourceVerifiedCondition=False",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pgp-keys-only",
+				},
+				Data: map[string][]byte{
+					"author1.asc": []byte(armoredKeyRingFixture),
+				},
+			},
+			commit: git.Commit{
+				ReferencingTag: &git.Tag{
+					Name:      "v0.1.0",
+					Hash:      []byte("shasum"),
+					Encoded:   []byte(encodedSSHTagFixture),
+					Signature: signatureSSHTagFixture,
+				},
+			},
+			beforeFunc: func(obj *sourcev1.GitRepository) {
+				obj.Spec.Reference = &sourcev1.GitRepositoryRef{
+					Tag: "v0.1.0",
+				}
+				obj.Spec.Interval = metav1.Duration{Duration: interval}
+				obj.Spec.Verification = &sourcev1.GitRepositoryVerification{
+					Mode: sourcev1.ModeGitTag,
+					SecretRef: meta.LocalObjectReference{
+						Name: "pgp-keys-only",
+					},
+				}
+			},
+			wantErr: true,
+			assertConditions: []metav1.Condition{
+				*conditions.FalseCondition(sourcev1.SourceVerifiedCondition, "InvalidTagSignature", "signature verification of tag 'v0.1.0@shasum' failed: SSH signature detected but no SSH public keys found in secret (keys with .sshpub suffix)"),
+			},
+		},
+		{
 			name: "Invalid SSH key in .sshpub entry makes SourceVerifiedCondition=False",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{
